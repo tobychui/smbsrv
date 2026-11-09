@@ -31,3 +31,11 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# The smbsrv command: its settings (password hashes!) and binaries
+smbsrv.json
+smbsrv.json.tmp
+/smbsrv
+/cmd/smbsrv/smbsrv
+smbsrv_*
+!*.go
