@@ -161,6 +161,19 @@ With `-tmsize` the share reports that size, less the backups already in it
 (the `.sparsebundle` and `.backupbundle` folders at its root), so Time
 Machine deletes its oldest backups at the limit instead of filling the disk.
 
+Keep a Time Machine server on port 445. macOS stores the backup password
+without a port, so a backup to a share on any other port fails to sign in
+even though the share could be added. Time Machine also never offers a share
+on the Mac that is being backed up, so test from a second Mac.
+
+For the shortest version in code, see
+[`examples/timemachine`](examples/timemachine/main.go): one user, and the
+folder `./backup` served as a Time Machine disk.
+
+```bash
+go run ./examples/timemachine -user alice -pw secret -max 500
+```
+
 ## The library
 
 ```go
@@ -209,6 +222,7 @@ func main() {
 | `smbsrv/localfs` | Shares over folders of the local disk (`New`), and a `Backend` from two functions (`NewBackend`). Keeps everything inside the folder: links leading off it are hidden and refused, and on Windows names the disk would store differently (`a:b`, `CON`, a trailing dot) are refused. |
 | `smbsrv/wsd` | WS-Discovery and LLMNR responder that lists a server in the Windows Network view. |
 | `smbsrv/cmd/smbsrv` | The command above, a complete example of using the library. |
+| `smbsrv/examples/timemachine` | A Time Machine backup server in one file: one user, `./backup` as the backup disk. |
 
 The protocol itself is in `internal/` (`wire`, `crypt`, `auth`, `rpc`,
 `state`, `osfile`) and is not part of the API.
