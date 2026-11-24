@@ -31,6 +31,8 @@ type testShare struct {
 	closeErr  error                           //What Close reports, like a failed staged upload
 	opened    int                             //Files open right now
 	pending   int64                           //Size the open file claims, like a staged copy; 0 is none
+	tmOn      bool                            //Offered for Time Machine
+	tmMax     uint64                          //Its size limit
 	noPoll    bool                            //Like a cloud drive, which cannot be listed often
 	versions  map[string]map[time.Time]string //Path, time, where that version is
 }
@@ -80,6 +82,12 @@ func (s *testShare) Key() string     { return s.root }
 func (s *testShare) ReadOnly() bool  { return s.readOnly }
 
 func (s *testShare) InternalFolder() string { return ".metadata" }
+
+func (s *testShare) TimeMachine() (bool, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tmOn, s.tmMax
+}
 func (s *testShare) CanPoll() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

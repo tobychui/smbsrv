@@ -214,3 +214,65 @@ func TestLoadRejectsBadFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSize(t *testing.T) {
+	tests := []struct {
+		in   string
+		want uint64
+		ok   bool
+	}{
+		{"", 0, true},
+		{"1000", 1000, true},
+		{"500G", 500 << 30, true},
+		{"2t", 2 << 40, true},
+		{" 64 M ", 64 << 20, true},
+		{"1K", 1024, true},
+		{"G", 0, false},
+		{"-5G", 0, false},
+		{"1.5G", 0, false},
+		{"lots", 0, false},
+		{"99999999999T", 0, false},
+	}
+	for _, tt := range tests {
+		got, err := ParseSize(tt.in)
+		if (err == nil) != tt.ok || got != tt.want {
+			t.Errorf("ParseSize(%q) = %d, %v; want %d, ok %v", tt.in, got, err, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestTimeMachineShares(t *testing.T) {
+	folder := t.TempDir()
+	cfg := NewConfig()
+	if cfg.hasTimeMachine() {
+		t.Fatal("a new config has no Time Machine share")
+	}
+	if _, _, err := cfg.AddShare(ShareConfig{Name: "tm", Path: folder, TimeMachineMaxSize: "500G"}); err == nil {
+		t.Error("-tmsize without -tm must be refused")
+	}
+	if _, _, err := cfg.AddShare(ShareConfig{Name: "tm", Path: folder, TimeMachine: true, TimeMachineMaxSize: "big"}); err == nil {
+		t.Error("a bad size must be refused")
+	}
+	if _, _, err := cfg.AddShare(ShareConfig{Name: "tm", Path: folder, TimeMachine: true, TimeMachineMaxSize: "500G"}); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.hasTimeMachine() {
+		t.Error("the Time Machine share is not seen")
+	}
+	if got := accessText(cfg.Shares[0]); got != "read and write, every user, Time Machine up to 500G" {
+		t.Errorf("accessText = %q", got)
+	}
+
+	st := newStore("", cfg, nil)
+	shares := st.shares("alice")
+	if len(shares) != 1 {
+		t.Fatalf("shares: %v", shares)
+	}
+	tm, ok := shares[0].(interface{ TimeMachine() (bool, uint64) })
+	if !ok {
+		t.Fatal("the share does not report Time Machine")
+	}
+	if on, max := tm.TimeMachine(); !on || max != 500<<30 {
+		t.Errorf("TimeMachine() = %v, %d", on, max)
+	}
+}

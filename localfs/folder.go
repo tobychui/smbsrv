@@ -67,6 +67,12 @@ type Config struct {
 	//InternalFolder names that hidden folder; empty is ".smbsrv". It is left
 	//out of listings and cannot be opened over SMB.
 	InternalFolder string
+
+	//TimeMachine offers the share to macOS as a Time Machine backup disk,
+	//when the server has smbsrv.Config.Apple on. TimeMachineMaxSize, in
+	//bytes, is the most the backups may take; 0 is the whole drive.
+	TimeMachine        bool
+	TimeMachineMaxSize uint64
 }
 
 // Folder is a smbsrv.Share over a folder of the local disk. Everything it
@@ -166,6 +172,15 @@ func (f *Folder) InternalFolder() string {
 		return ""
 	}
 	return f.cfg.InternalFolder
+}
+
+// TimeMachine implements smbsrv.TimeMachineShare. A read only share takes
+// no backups.
+func (f *Folder) TimeMachine() (bool, uint64) {
+	if !f.cfg.TimeMachine || f.cfg.ReadOnly {
+		return false, 0
+	}
+	return true, f.cfg.TimeMachineMaxSize
 }
 
 // CanRead and CanWrite allow everything: a Folder is the same for every user.

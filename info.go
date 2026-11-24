@@ -59,7 +59,7 @@ func (c *conn) handleQueryInfo(r *request) *response {
 	case wire.InfoFile:
 		return c.queryFile(o, q)
 	case wire.InfoFilesystem:
-		return queryFilesystem(o, q)
+		return c.queryFilesystem(o, q)
 	case wire.InfoSecurity:
 		return c.querySecurity(o, q)
 	}
@@ -157,7 +157,7 @@ func (c *conn) queryFile(o *open, q *wire.QueryInfoRequest) *response {
 	case wire.FileStandardInformation:
 		o.standardInfo(w, info)
 	case wire.FileInternalInformation:
-		w.U64(fileNumber(share, p, info))
+		w.U64(c.fileID(share, p, info))
 	case wire.FileEaInformation:
 		w.U32(0)
 	case wire.FileAccessInformation:
@@ -173,7 +173,7 @@ func (c *conn) queryFile(o *open, q *wire.QueryInfoRequest) *response {
 		w.U32(attributesOf(info))
 		w.U32(0)
 		o.standardInfo(w, info)
-		w.U64(fileNumber(share, p, info))
+		w.U64(c.fileID(share, p, info))
 		w.U32(0)
 		w.U32(o.access)
 		w.U64(0)
@@ -242,7 +242,7 @@ func wirePath(p string) string {
 	return out
 }
 
-func queryFilesystem(o *open, q *wire.QueryInfoRequest) *response {
+func (c *conn) queryFilesystem(o *open, q *wire.QueryInfoRequest) *response {
 	share := o.tree.share
 	w := wire.NewWriter(64)
 	variable := false
@@ -257,13 +257,13 @@ func queryFilesystem(o *open, q *wire.QueryInfoRequest) *response {
 		w.Bytes(label)
 		variable = true
 	case wire.FileFsSizeInformation:
-		total, free := share.Usage()
+		total, free := c.srv.usage(share)
 		w.U64(total / clusterSize)
 		w.U64(free / clusterSize)
 		w.U32(sectorsPerUnit)
 		w.U32(sectorSize)
 	case wire.FileFsFullSizeInformation:
-		total, free := share.Usage()
+		total, free := c.srv.usage(share)
 		w.U64(total / clusterSize)
 		w.U64(free / clusterSize)
 		w.U64(free / clusterSize)

@@ -49,6 +49,10 @@ type conn struct {
 	sessions   map[uint64]*session
 	loggedIn   bool
 
+	//The client sent AAPL, and takes Finder info in listings (apple.go)
+	apple        bool
+	appleDirAttr bool
+
 	pendMu       sync.Mutex
 	pending      map[uint64]*asyncOp //By async id
 	pendingByMsg map[uint64]*asyncOp

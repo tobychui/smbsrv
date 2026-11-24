@@ -508,8 +508,8 @@ func (c *conn) createBody(o *open, p string, info FileInfo, action uint32, q *wi
 	return w.B
 }
 
-// createContexts answers MxAc, QFid, and lease and durable handle requests
-// that were granted. A request with no answer is one the server declined.
+// createContexts answers MxAc, QFid, AAPL, and lease and durable handle
+// requests that were granted. A request with no answer is one the server declined.
 func (c *conn) createContexts(o *open, p string, info FileInfo, q *wire.CreateRequest) []byte {
 	type reply struct {
 		name string
@@ -537,6 +537,10 @@ func (c *conn) createContexts(o *open, p string, info FileInfo, q *wire.CreateRe
 		case wire.ContextDurableReqV2:
 			if o.durable {
 				replies = append(replies, reply{ctx.Name, durableContext(o)})
+			}
+		case wire.ContextApple:
+			if data := c.appleReply(share, ctx.Data); data != nil {
+				replies = append(replies, reply{ctx.Name, data})
 			}
 		}
 	}

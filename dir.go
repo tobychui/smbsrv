@@ -35,7 +35,11 @@ func entrySize(class uint8) int {
 	return 0
 }
 
-func encodeEntry(class uint8, e *dirEntry, s Share) []byte {
+// encodeEntry writes one entry of a listing. For a client that sent AAPL the
+// file id is zero, and with Finder info negotiated the EA size, short name and
+// reserved fields of FILE_ID_BOTH_DIR_INFORMATION carry the access mask, the
+// resource fork size and the Finder info (apple.go).
+func encodeEntry(class uint8, e *dirEntry, s Share, apple appleListing) []byte {
 	name := wire.EncodeUTF16(e.name)
 	fixed := entrySize(class)
 	w := wire.NewWriter(fixed + len(name))
@@ -68,16 +72,29 @@ func encodeEntry(class uint8, e *dirEntry, s Share) []byte {
 		w.U32(0)
 		w.Zero(2 + 24) //Short name length, reserved, short name
 	case wire.FileIdBothDirectoryInformation:
-		w.U32(0)
-		w.Zero(2 + 24 + 2)
-		w.U64(fileNumber(s, e.path, e.info))
+		if apple.dirAttr {
+			w.U32(maximalAccess(s, e.path))
+			w.Bytes(appleShortName(s, e))
+			w.U16(0) //Unix mode, only read with NFS ACEs
+		} else {
+			w.U32(0)
+			w.Zero(2 + 24 + 2)
+		}
+		w.U64(entryID(s, e, apple))
 	case wire.FileIdFullDirectoryInformation:
 		w.U32(0)
 		w.U32(0)
-		w.U64(fileNumber(s, e.path, e.info))
+		w.U64(entryID(s, e, apple))
 	}
 	w.Bytes(name)
 	return w.B
+}
+
+func entryID(s Share, e *dirEntry, apple appleListing) uint64 {
+	if apple.zeroIDs {
+		return 0
+	}
+	return fileNumber(s, e.path, e.info)
 }
 
 // loadDirectory takes the snapshot of a folder. A name without wildcards is
@@ -161,6 +178,7 @@ func (c *conn) handleQueryDirectory(r *request) *response {
 	}
 
 	share := o.tree.share
+	apple := c.appleListing()
 	out := wire.NewWriter(4096)
 	last := -1
 	for o.dirPos < len(o.dirEntries) {
@@ -169,7 +187,7 @@ func (c *conn) handleQueryDirectory(r *request) *response {
 			o.dirPos++
 			continue
 		}
-		encoded := encodeEntry(q.Class, e, share)
+		encoded := encodeEntry(q.Class, e, share, apple)
 		start := (out.Len() + 7) &^ 7
 		if start+len(encoded) > int(q.MaxOutput) {
 			break

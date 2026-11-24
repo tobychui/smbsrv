@@ -260,6 +260,7 @@ const (
 	ContextDurableRecon2 = "DH2C"
 	ContextTimewarp      = "TWrp"
 	ContextLease         = "RqLs"
+	ContextApple         = "AAPL"
 )
 
 // NT status codes

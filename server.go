@@ -78,6 +78,14 @@ type Config struct {
 	LeaseBreakTimeout time.Duration
 	LeasePoll         time.Duration
 
+	//Apple answers the AAPL create context of macOS clients: Finder info in
+	//directory listings, and Time Machine on shares that implement
+	//TimeMachineShare (apple.go)
+	Apple bool
+	//AppleModel is the model macOS is told, which picks the icon Finder shows.
+	//Empty is DefaultAppleModel
+	AppleModel string
+
 	//RequireEncryption refuses clients that cannot encrypt (SMB 2.1, and
 	//3.x clients with encryption off) and every unencrypted request
 	RequireEncryption bool
@@ -98,6 +106,9 @@ type Server struct {
 	watches    watchers
 	leases     leases
 	durables   durableTable
+
+	tmMu    sync.Mutex
+	tmUsage map[string]timeMachineUsage //Size of the backups of Time Machine shares, by Key
 
 	mu      sync.Mutex
 	conns   map[*conn]struct{}
@@ -135,6 +146,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
+	}
+	if cfg.AppleModel == "" {
+		cfg.AppleModel = DefaultAppleModel
 	}
 	if cfg.LoginTimeout == 0 {
 		cfg.LoginTimeout = defaultLoginTimeout

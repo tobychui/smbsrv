@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -41,6 +42,7 @@ type Config struct {
 	Announce             bool          `json:"announce"`
 	RequireEncryption    bool          `json:"requireEncryption"`
 	AllowPublicAddresses bool          `json:"allowPublicAddresses"`
+	Apple                bool          `json:"apple,omitempty"`
 	Users                []User        `json:"users"`
 	Shares               []ShareConfig `json:"shares"`
 }
@@ -60,6 +62,40 @@ type ShareConfig struct {
 	ReadOnly  bool     `json:"readOnly,omitempty"`
 	Users     []string `json:"users,omitempty"` //Who may open it; empty is every user
 	NoStreams bool     `json:"noStreams,omitempty"`
+
+	//TimeMachine offers the share to Macs as a Time Machine backup disk.
+	//TimeMachineMaxSize limits the backups, such as "500G"; empty is the
+	//whole drive.
+	TimeMachine        bool   `json:"timeMachine,omitempty"`
+	TimeMachineMaxSize string `json:"timeMachineMaxSize,omitempty"`
+}
+
+// ParseSize reads a size such as 500G: a number of bytes, or of K, M, G or T
+// (powers of 1024). Empty is 0.
+func ParseSize(text string) (uint64, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0, nil
+	}
+	mult := uint64(1)
+	switch strings.ToUpper(text[len(text)-1:]) {
+	case "K":
+		mult = 1 << 10
+	case "M":
+		mult = 1 << 20
+	case "G":
+		mult = 1 << 30
+	case "T":
+		mult = 1 << 40
+	}
+	if mult > 1 {
+		text = text[:len(text)-1]
+	}
+	n, err := strconv.ParseUint(strings.TrimSpace(text), 10, 64)
+	if err != nil || n > (1<<63)/mult {
+		return 0, fmt.Errorf("%q is not a size, use a number of bytes or one like 500G", text)
+	}
+	return n * mult, nil
 }
 
 // DefaultConfigPath is smbsrv.json in the folder of the running binary.
@@ -320,6 +356,12 @@ func (c *Config) AddShare(s ShareConfig) (stored ShareConfig, updated bool, err 
 	if err := localfs.ValidShareName(s.Name); err != nil {
 		return s, false, err
 	}
+	if _, err := ParseSize(s.TimeMachineMaxSize); err != nil {
+		return s, false, err
+	}
+	if s.TimeMachineMaxSize != "" && !s.TimeMachine {
+		return s, false, errors.New("-tmsize goes with -tm")
+	}
 	users := []string{}
 	for _, u := range s.Users {
 		if u = strings.TrimSpace(u); u != "" {
@@ -333,6 +375,16 @@ func (c *Config) AddShare(s ShareConfig) (stored ShareConfig, updated bool, err 
 	}
 	c.Shares = append(c.Shares, s)
 	return s, false, nil
+}
+
+// hasTimeMachine reports a share offered for Time Machine backups.
+func (c *Config) hasTimeMachine() bool {
+	for _, s := range c.Shares {
+		if s.TimeMachine {
+			return true
+		}
+	}
+	return false
 }
 
 // RemoveShare stops sharing a folder. The folder itself is not touched.

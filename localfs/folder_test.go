@@ -329,3 +329,35 @@ func TestBadNamesOnThisSystem(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderTimeMachine(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantOn  bool
+		wantMax uint64
+	}{
+		{"off", Config{}, false, 0},
+		{"on", Config{TimeMachine: true}, true, 0},
+		{"with a limit", Config{TimeMachine: true, TimeMachineMaxSize: 1 << 30}, true, 1 << 30},
+		{"read only takes no backups", Config{TimeMachine: true, ReadOnly: true}, false, 0},
+		{"without streams", Config{TimeMachine: true, NoStreams: true}, true, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.cfg
+			cfg.Name, cfg.Path = "tm", t.TempDir()
+			share, err := New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tm, ok := share.(smbsrv.TimeMachineShare)
+			if !ok {
+				t.Fatal("not a TimeMachineShare")
+			}
+			if on, max := tm.TimeMachine(); on != tt.wantOn || max != tt.wantMax {
+				t.Errorf("TimeMachine() = %v, %d; want %v, %d", on, max, tt.wantOn, tt.wantMax)
+			}
+		})
+	}
+}

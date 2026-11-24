@@ -18,6 +18,8 @@ and Linux clients.
 - Previous Versions, for backends that keep snapshots
 - Share listing over IPC$ (srvsvc, lsarpc, wkssvc), and optional WS-Discovery
   so the server shows in the Windows Network view
+- Apple extensions (AAPL) for macOS: Finder info in directory listings, and
+  Time Machine backups with an optional size limit
 
 ## The smbsrv command
 
@@ -66,6 +68,8 @@ that was deleted or got a new password.
 | `  -ro` | Read only. |
 | `  -u alice,bob` | Only these users may open it (default: every user). |
 | `  -nostreams` | Keep no named streams for this share (see below). |
+| `  -tm` | Offer this share to Macs as a Time Machine backup disk (see below). Turns `-apple` on. |
+| `  -tmsize 500G` | The most the Time Machine backups on this share may take (K, M, G or T). |
 | `smbsrv -rm NAME` | Stop sharing a folder. The folder is not touched. |
 | `smbsrv -l` | List users and shares. |
 | `smbsrv` | Start the server. |
@@ -73,6 +77,7 @@ that was deleted or got a new password.
 | `  -name NAS` | Server name for this run. |
 | `  -announce` | Show the server in the Windows Network view (WS-Discovery and LLMNR). Only useful on port 445. |
 | `  -encrypt` | Refuse clients that cannot encrypt (SMB 2.1, and 3.x with encryption turned off). |
+| `  -apple` | Answer the Apple extensions of macOS: Finder info in listings, Time Machine. |
 | `  -capture DIR` | Write a pcap and a trace log of every connection, for debugging. NTLM responses are blanked. |
 | `-c FILE` | Use another settings file. |
 
@@ -90,18 +95,20 @@ It is created by the first `-a` or `-f`:
   "announce": true,
   "requireEncryption": false,
   "allowPublicAddresses": false,
+  "apple": true,
   "users": [
     { "name": "alice", "ntHash": "8846f7eaee8fb117ad06bdd830b7586c", "changed": "2026-11-09T10:00:00Z" }
   ],
   "shares": [
     { "name": "photos", "path": "/srv/photos" },
-    { "name": "archive", "path": "/srv/archive", "readOnly": true, "users": ["alice"] }
+    { "name": "archive", "path": "/srv/archive", "readOnly": true, "users": ["alice"] },
+    { "name": "TimeMachine", "path": "/srv/tm", "timeMachine": true, "timeMachineMaxSize": "500G" }
   ]
 }
 ```
 
 Server settings (`address`, `serverName`, `announce`, `requireEncryption`,
-`allowPublicAddresses`) are read when the server starts; edit them by hand and
+`allowPublicAddresses`, `apple`) are read when the server starts; edit them by hand and
 restart. `guid` identifies the server to clients and is made once.
 
 **About the password hash.** NTLM, the login every SMB client offers, is
@@ -136,6 +143,23 @@ them. smbsrv keeps them as files in a hidden `.smbsrv` folder beside the files
 they belong to, which works on every file system. The folder never shows over
 SMB. Use `-nostreams` for a share where you would rather not have it on disk:
 Windows then leaves the streams out, and macOS writes `._` files instead.
+
+### Time Machine
+
+```bash
+smbsrv -f /srv/tm -n TimeMachine -tm -tmsize 500G
+```
+
+macOS only backs up to a network share whose server answers its Apple
+extensions with "full sync", which `-tm` turns on for that share. On the Mac,
+connect to the share once in the Finder (Go > Connect to Server,
+`smb://HOST/TimeMachine`), then pick it in System Settings > General > Time
+Machine > Add Backup Disk. smbsrv does not announce itself over Bonjour, so
+the share only shows up there once it has been connected.
+
+With `-tmsize` the share reports that size, less the backups already in it
+(the `.sparsebundle` and `.backupbundle` folders at its root), so Time
+Machine deletes its oldest backups at the limit instead of filling the disk.
 
 ## The library
 
@@ -216,7 +240,13 @@ protocol:
 | `SnapshotShare` | Previous Versions in Windows Explorer. |
 | `PollableShare` | Change notifications for changes made around the server, by listing watched folders every few seconds. |
 | `InternalShare` | A folder name the share keeps for itself, hidden from listings and refused to writes. |
+| `TimeMachineShare` | Time Machine backups from Macs, with an optional size limit, when `Config.Apple` is on. |
 | `PendingFile` (on a `File`) | The size of a file whose writes reach storage later, such as a staged upload. |
+
+`Config.Apple` answers the AAPL create context macOS sends: the server says
+it is Unix based, puts Finder info and resource fork sizes in directory
+listings (read from the `AFP_AfpInfo` and `AFP_Resource` streams of a
+`StreamShare`), and shows Macs zero file ids, as Samba and ksmbd do.
 
 `Config.Logger` takes a `*slog.Logger` for logins, refused connections and
 protocol trouble; it defaults to `slog.Default()`.

@@ -101,12 +101,15 @@ func (s *store) shares(username string) []smbsrv.Share {
 		if !sc.Allows(username) {
 			continue
 		}
+		maxSize, _ := ParseSize(sc.TimeMachineMaxSize) //Checked when the share was added
 		share, err := localfs.New(localfs.Config{
-			Name:      sc.Name,
-			Path:      sc.Path,
-			Comment:   sc.Comment,
-			ReadOnly:  sc.ReadOnly,
-			NoStreams: sc.NoStreams,
+			Name:               sc.Name,
+			Path:               sc.Path,
+			Comment:            sc.Comment,
+			ReadOnly:           sc.ReadOnly,
+			NoStreams:          sc.NoStreams,
+			TimeMachine:        sc.TimeMachine,
+			TimeMachineMaxSize: maxSize,
 		})
 		if err != nil {
 			s.logger.Warn("Share "+sc.Name+" is not available", "err", err)

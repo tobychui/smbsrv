@@ -59,6 +59,7 @@ type serveOptions struct {
 	capture    string
 	announce   *bool
 	encrypt    *bool
+	apple      *bool
 	ready      func(net.Addr) //For tests: called once the server listens
 }
 
@@ -78,12 +79,15 @@ func run(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.W
 	readOnly := fs.Bool("ro", false, "make the -f share read only")
 	shareUsers := fs.String("u", "", "comma separated `users` who may open the -f share (default: every user)")
 	noStreams := fs.Bool("nostreams", false, "do not keep named streams for the -f share")
+	timeMachine := fs.Bool("tm", false, "offer the -f share to Macs as a Time Machine backup disk (turns -apple on)")
+	tmSize := fs.String("tmsize", "", "most the Time Machine backups of the -tm share may take, such as `500G`")
 	removeShare := fs.String("rm", "", "stop sharing the share of this `name`")
 	fs.Bool("l", false, "list users and shares")
 	address := fs.String("addr", "", "listen `address` for this run, such as :1445 (default from the file, :445)")
 	serverName := fs.String("name", "", "server `name` for this run (default from the file)")
 	announce := fs.Bool("announce", false, "show the server in the Windows Network view (WS-Discovery)")
 	encrypt := fs.Bool("encrypt", false, "refuse clients that cannot encrypt (SMB 2.1, and 3.x with encryption off)")
+	apple := fs.Bool("apple", false, "answer the Apple (AAPL) extensions of macOS: Finder info in listings, Time Machine")
 	capture := fs.String("capture", "", "write a pcap and a trace log of every connection to this `folder`, for debugging")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -102,7 +106,7 @@ func run(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.W
 		fmt.Fprintln(stderr, "smbsrv: -pw goes with -a NAME")
 		return 2
 	}
-	for _, name := range []string{"n", "ro", "u", "nostreams"} {
+	for _, name := range []string{"n", "ro", "u", "nostreams", "tm", "tmsize"} {
 		if set[name] && !set["f"] {
 			fmt.Fprintf(stderr, "smbsrv: -%s goes with -f FOLDER\n", name)
 			return 2
@@ -151,7 +155,7 @@ func run(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.W
 			changed = true
 		}
 		if set["f"] {
-			sc := ShareConfig{Name: *shareName, Path: *folder, ReadOnly: *readOnly, NoStreams: *noStreams}
+			sc := ShareConfig{Name: *shareName, Path: *folder, ReadOnly: *readOnly, NoStreams: *noStreams, TimeMachine: *timeMachine, TimeMachineMaxSize: *tmSize}
 			if *shareUsers != "" {
 				sc.Users = strings.Split(*shareUsers, ",")
 			}
@@ -200,6 +204,9 @@ func run(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.W
 	if set["encrypt"] {
 		opt.encrypt = encrypt
 	}
+	if set["apple"] {
+		opt.apple = apple
+	}
 	if err := serve(ctx, path, cfg, opt, stdout, stderr); err != nil {
 		fmt.Fprintln(stderr, "smbsrv:", err)
 		return 1
@@ -225,6 +232,11 @@ func serve(ctx context.Context, path string, cfg *Config, opt serveOptions, stdo
 	if opt.encrypt != nil {
 		encrypt = *opt.encrypt
 	}
+	//Time Machine needs the Apple extensions
+	apple := cfg.Apple || cfg.hasTimeMachine()
+	if opt.apple != nil {
+		apple = *opt.apple
+	}
 	guid, err := cfg.guid()
 	if err != nil {
 		return err
@@ -249,6 +261,7 @@ func serve(ctx context.Context, path string, cfg *Config, opt serveOptions, stdo
 		Logger:            logger,
 		CaptureDir:        opt.capture,
 		RequireEncryption: encrypt,
+		Apple:             apple,
 	})
 	if err != nil {
 		return err
@@ -359,7 +372,14 @@ func accessText(s ShareConfig) string {
 	if len(s.Users) > 0 {
 		who = strings.Join(s.Users, ", ")
 	}
-	return mode + ", " + who
+	out := mode + ", " + who
+	if s.TimeMachine {
+		out += ", Time Machine"
+		if s.TimeMachineMaxSize != "" {
+			out += " up to " + s.TimeMachineMaxSize
+		}
+	}
+	return out
 }
 
 func firstNonEmpty(values ...string) string {
